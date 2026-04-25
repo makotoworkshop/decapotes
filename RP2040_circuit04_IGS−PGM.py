@@ -129,14 +129,19 @@ def vsync_pio():
     wait(0, pin, 0)     # front descendant C-sync
 
     mov(x, y)
-    label("measure")
+    label("measure")    # la boucle mesure prend 2 cycles
     jmp(pin, "short")
     jmp(x_dec, "measure")
 
     # Trou détecté → V-sync bas
     set(pins, 0)
-    wait(1, pin, 0)     # attendre le premier front montant C-sync
-    set(pins, 1)        # V-sync haut
+    wait(1, pin, 0)      # attendre le premier front montant C-sync
+    
+    mov(x, y)            # la boucle prend 1 seul cycle donc le délais propagé en sortie serait de moitié
+    label("delay")       # 
+    jmp(x_dec, "delay").delay(1)  # donc en ajoutant .delay(1) on force à consommer un cycle
+    
+    set(pins, 1)       # V-sync haut
     wrap()
 
     label("short")
@@ -147,8 +152,8 @@ sm5 = rp2.StateMachine(1, vsync_pio, freq=125_000_000,
                        set_base=Pin(V_Sync_extrac),
                        in_base=Pin(C_Sync_in),
                        jmp_pin=Pin(C_Sync_in))
-sm5.put(400)   # seuil 1250 (10µs)
-sm5.active(1)    
+sm5.put(400)   # seuil 400 cycles (6,4 µs)
+sm5.active(1)
 
 ###############################################
 # Fonction pour State machine : front montant # 
@@ -216,26 +221,28 @@ sm3.active(1)
 ##################################################
 # Fonction pour State machine : Porte logique ET #
 ##################################################
-@rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, autopush=False, autopull=False)
-def and_gate():
-    wrap_target()
-    in_(pins, 2)          # lit pin 6 et 7
-    mov(x, isr)           # X = état actuel
-    mov(isr, null)
-    set(y, 3)
-    jmp(x_not_y, "low")
-    set(pins, 1)
-    jmp("done")
-    label("low")
-    set(pins, 0)
-    label("done")
-    nop() [31]            # attend 32 cycles avant de reboucler
-    wrap()
-# Déclaration State machine
-sm6 = rp2.StateMachine(2, and_gate, freq=125_000_000,
-                       in_base=Pin(H_Sync_phase_shifted),   # pins 6 et 7 lues en séquence
-                       set_base=Pin(C_Sync_rebuild))  # pin de sortie
-sm6.active(1)
+# @rp2.asm_pio(set_init=rp2.PIO.OUT_LOW, autopush=False, autopull=False)
+# def and_gate():
+#     wrap_target()
+#     in_(pins, 2)          # lit pin 6 et 7
+#     mov(x, isr)           # X = état actuel
+#     mov(isr, null)
+#     set(y, 3)
+#     jmp(x_not_y, "low")
+#     set(pins, 1)
+#     jmp("done")
+#     label("low")
+#     set(pins, 0)
+#     label("done")
+#     nop() [31]            # attend 32 cycles avant de reboucler
+#     wrap()
+# # Déclaration State machine
+# sm6 = rp2.StateMachine(2, and_gate, freq=125_000_000,
+#                        in_base=Pin(H_Sync_phase_shifted),   # pins 6 et 7 lues en séquence
+#                        set_base=Pin(C_Sync_rebuild))  # pin de sortie
+# sm6.active(1)
+# Fonction retirée et remplacée par 74HC08, car le bloc PIO 0 est non seulement plein,
+# mais en plus le timing de sortie est incorrect.
 
 #######################
 # Programme principal #
